@@ -1,0 +1,22 @@
+device_prefix: "DETECTOR"
+rtlsdr_device: 0
+
+blacklist_frequencies:
+  - 2.45e9  # Example frequency to ignore
+  - 5.0e9   # Another example frequency to ignore
+
+whitelist_frequencies:
+  - 2.412e9  # Example frequency to always jam
+  - 5.735e9  # Another example frequency to always jam
+
+gain: 50 # Choose from [50, 70]
+detection_threshold: -60 # dBm
+
+jamming_power: -50 # dBm (default for initialization)
+jamming_cooldown: 1 # seconds
+jamming_power_increment: 5 # dBm
+jamming_power_decrement: 2 # dBm
+jamming_hop_rate: 100e6 # Hz
+
+logging_level: INFO
+log_file: "detector.log"
