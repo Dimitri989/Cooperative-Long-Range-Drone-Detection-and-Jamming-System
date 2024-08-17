@@ -1,6 +1,8 @@
 device_prefix: "DETECTOR"
 rtlsdr_device: 0
 
+cooperative_mode: true
+
 blacklist_frequencies:
   - 2.45e9  # Example frequency to ignore
   - 5.0e9   # Another example frequency to ignore
