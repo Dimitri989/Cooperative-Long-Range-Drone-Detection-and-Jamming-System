@@ -117,7 +117,7 @@ class CooperativeLongRangeDroneDetector:
         GPIO.add_event_detect(BUTTON_PIN, GPIO.FALLING, callback=self.button_callback, bouncetime=300)
         self.logging = logging.getLogger(__name__)
         self.setup_logging()
-        self.cooperative_mode = cooperative_mode
+        self.cooperative_mode = cooperative_mode if cooperative_mode is not None else self.config.get("cooperative_mode", True)
         self.devices = []
         self.lock = threading.Lock()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -206,7 +206,18 @@ class CooperativeLongRangeDroneDetector:
                                 handlers=[logging.FileHandler(self.config.get("log_file", "drone_detector.log")), logging.StreamHandler()])
         except (IOError, PermissionError) as e:
             print(f"Error configuring logging: {e}")
+    
+    def save_config(self):
+        """
+        Save configuration settings to the YAML config file.
+        """
+        try:
+            with open(self.CONFIG_FILE, "w") as f:
+                yaml.dump(self.config, f)
+        except (IOError, PermissionError) as e:
+            print(f"Error saving config file: {e}")
 
+    
     def get_device_id(self):
         """
         Get the unique identifier for the device.
@@ -410,31 +421,6 @@ class CooperativeLongRangeDroneDetector:
                         print(f"Detected signal at {freq/1e6:.2f} MHz with power {max_power:.2f} dBm")
                         self.jam(freq)
 
-    def jam(self, freq):
-        """
-        Jam the detected frequency using the RTLSDR as a transmitter.
-
-        Args:
-            freq (float, optional): The frequency to jam. Defaults to JAMMING_FREQ.
-        """
-        global JAMMING_POWER
-        if time.time() - self.last_jam_time < self.config.get("jamming_cooldown", 10):
-            return
-
-        self.sdr.set_center_freq(JAMMING_FREQS[self.jamming_freq_index])
-        self.sdr.set_am_mode(True)
-        self.sdr.set_am_gain(0)
-
-        # Store the current jamming power in history
-        with self.lock:
-            self.jammer_power_history.append(JAMMING_POWER)
-
-        print(f"Jamming at {self.sdr.center_freq/1e6:.2f} MHz with power {JAMMING_POWER:.2f} dBm")
-        self.last_jam_time = time.time()
-
-        # Increment the jamming frequency index for adaptive hopping
-        self.jamming_freq_index = (self.jamming_freq_index + 1) % len(JAMMING_FREQS)
-
     def resume_jamming(self):
         """
         Resume jamming using the last stored jamming power from history.
@@ -449,6 +435,8 @@ class CooperativeLongRangeDroneDetector:
         """
         Start cooperative detection mode if enabled, otherwise run standalone detection mode.
         """
+        self.config["cooperative_mode"] = self.cooperative_mode
+        self.save_config()
         if self.cooperative_mode:
             print("Starting Cooperative Mode...")
             self.run_cooperative()
@@ -470,12 +458,22 @@ if __name__ == "__main__":
     parser.add_argument("--device_id", type=str, default=None, help="Set a custom device ID (default: automatically generated).")
     args = parser.parse_args()
 
-    detector = CooperativeLongRangeDroneDetector(device_id=args.device_id, cooperative_mode=args.cooperative)
+    # Load the configuration to get the saved mode
+    config_file = "drone_detector_config.yaml"
     try:
-        print(f"Long-Range Drone Detector ready (Cooperative Mode: {args.cooperative}) Device ID: {detector.device_id}")
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+            cooperative_mode = config.get("cooperative_mode", args.cooperative)
+    except (FileNotFoundError, yaml.YAMLError) as e:
+        print(f"Error loading config file: {e}")
+        cooperative_mode = args.cooperative
+
+    detector = CooperativeLongRangeDroneDetector(device_id=args.device_id, cooperative_mode=cooperative_mode)
+    try:
+        print(f"Long-Range Drone Detector ready (Cooperative Mode: {cooperative_mode}) Device ID: {detector.device_id}")
         detector.start()
     except KeyboardInterrupt:
         print("Exiting...")
-        detector.resume_jamming() # Resume jamming with the last stored power level before exiting
+        detector.resume_jamming()  # Resume jamming with the last stored power level before exiting
     finally:
         detector.stop()
